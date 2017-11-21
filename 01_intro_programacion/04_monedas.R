@@ -10,60 +10,61 @@
 # Tras más de 2h de ejecución, he obtenido el resultado de 73682.
 
 
-cantidad2 <- 200
-monedas2 <- c(1, 2, 5, 10, 20, 50, 100, 200)
-cantidades2 <- rep(cantidad2, times=length(monedas2))
-pesos2 <- cantidades2 / monedas2
-
-combinaciones2<-0
-
-for (a in 0:pesos2[1]){
-  for (b in 0:pesos2[2]){
-    for (c in 0:pesos2[3]){
-      for (d in 0:pesos2[4]){
-         for (e in 0:pesos2[5]){
-           for (f in 0:pesos2[6]){
-             for (g in 0:pesos2[7]){
-               for (h in 0:pesos2[8]){
-                   valor_a<-a*monedas2[1]
-                   valor_b<-b*monedas2[2]
-                   valor_c<-c*monedas2[3]
-                   valor_d<-d*monedas2[4]
-                   valor_e<-e*monedas2[5]
-                   valor_f<-f*monedas2[6]
-                   valor_g<-g*monedas2[7]
-                   valor_h<-h*monedas2[8]
-                   
-                   if (sum(valor_a,valor_b,valor_c,valor_d,valor_e,valor_f,valor_g,valor_h)==cantidad2){
-                     #print(paste("Sum de a,b,c,d es",a,b,c,d))
-                     #print(paste(a,b,c,d))
-                     combinaciones2 <- combinaciones2 +1     
-                    }#if
-                  }#for de moneda de 2
-                }#for de moneda de 1
-               } #for de moneda de 0.50
-             }#for de moneda de 0.20
-           }#for de moneda de 0.10
-         }#for de moneda de 0.05
-       }#for de moneda de 0.02
-     }#for de moneda de 0.01
-
-# Algoritmo más eficiente: Aún por arreglar
-# cantidad <- 5
-# monedas <- c(1, 2, 5)#, 10, 20, 50, 100, 200)
-# combinaciones <- c(1,rep(0,length(monedas-1)))
+# cantidad2 <- 200
+# monedas2 <- c(1, 2, 5, 10, 20, 50, 100, 200)
+# cantidades2 <- rep(cantidad2, times=length(monedas2))
+# pesos2 <- cantidades2 / monedas2
 # 
-# for ( m in 1:length(monedas)) {
-#   print(paste("Bucle de Monedas. Moneda vale ahora: ",m))
-#   #Inicializo c para recorrer el array de combinaciones
-#   combi <- monedas[m]
-#   print(paste("Recorreré combinaciones de ",combi," a ",cantidad))
-#   while (combi < cantidad-1){
-#     print(paste("Combi ha tomado el valor de: ",combi))
-#     combinaciones[combi+1] <- combinaciones[combi+1] + combinaciones[(combi+1) - monedas[m]]  
-#   #   print(combinaciones)
-#     combi <- combi +1
-#   }#while de combi a cantidad
-# }#for de monedas
+# combinaciones2<-0
 # 
-# sum(combinaciones)
+# for (a in 0:pesos2[1]){
+#   for (b in 0:pesos2[2]){
+#     for (c in 0:pesos2[3]){
+#       for (d in 0:pesos2[4]){
+#          for (e in 0:pesos2[5]){
+#            for (f in 0:pesos2[6]){
+#              for (g in 0:pesos2[7]){
+#                for (h in 0:pesos2[8]){
+#                    valor_a<-a*monedas2[1]
+#                    valor_b<-b*monedas2[2]
+#                    valor_c<-c*monedas2[3]
+#                    valor_d<-d*monedas2[4]
+#                    valor_e<-e*monedas2[5]
+#                    valor_f<-f*monedas2[6]
+#                    valor_g<-g*monedas2[7]
+#                    valor_h<-h*monedas2[8]
+#                    
+#                    if (sum(valor_a,valor_b,valor_c,valor_d,valor_e,valor_f,valor_g,valor_h)==cantidad2){
+#                      #print(paste("Sum de a,b,c,d es",a,b,c,d))
+#                      #print(paste(a,b,c,d))
+#                      combinaciones2 <- combinaciones2 +1     
+#                     }#if
+#                   }#for de moneda de 2
+#                 }#for de moneda de 1
+#                } #for de moneda de 0.50
+#              }#for de moneda de 0.20
+#            }#for de moneda de 0.10
+#          }#for de moneda de 0.05
+#        }#for de moneda de 0.02
+#      }#for de moneda de 0.01
+
+# Solución eficiente cedida por la tutora
+# Adaptado de http://www.mathblog.dk/project-euler-31-combinations-english-currency-denominations/
+
+# Variables iniciales
+objetivo <- 200
+monedas  <- c(1, 2, 5, 10, 20, 50, 100, 200)
+
+# Definimos el array de formas (alternativas para conseguir una cantidad)
+maneras   <- rep(0, 201)
+maneras[1] <- 1
+
+# Se recorren los arrays de monedas y soluciones.
+for (i in 1:length(monedas)) {
+  for (j in (monedas[i] + 1):(objetivo + 1)) {
+    maneras[j] = maneras[j] + maneras[j - monedas[i]]
+  }
+}
+
+# La solución está en la última posición del array
+maneras[length(maneras)]
