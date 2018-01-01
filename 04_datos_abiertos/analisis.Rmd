@@ -1,0 +1,245 @@
+---
+title: "Análisis de la eficacia de la aplicación del protocolo anticontaminación en madrid en Noviembre del 2017"
+author: "Aitor Garcia Manterola"
+date: "1 de enero de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Pruebas para jugar con datos abiertos.
+
+En este ejercicio propuesto, tenemos que conectarnos al site de [Datos de abierto de Madrid](http://datos.madrid.es/portal/site/egob/), descargarnos alguno de los documentos que hay y trabajar con ellos.
+
+Para mi ejercicio, me he decantado por jugar con datos de la polución en la cuidad de Madrid. La aplicación de los escenarios "anticontaminación" es una medida que está aplicándose de manera más frecuente en los últimos meses, y da mucho que hablar.
+
+He encontrado una cesión con información sobre las concentraciones de ciertos compuestos. Dichas lecturas son las que actualmente se utilizan para decidir aplicar o no el protocolo en determinadas zonas de la ciudad.
+
+## Trabajando con documentos PDF
+
+Con ánimo de no dictaminar las fechas sobre las que realizar el análisis, me gustaría decidir las fechas a utilizar desde alguna fuente que defina el calendario de fechas cuando se han aplicado los protocolos de anticontaminación en la cuidad.
+
+La única fuente que he encontrado, ha sido un documento PDF:
+[Enlace al documento de las aplicaciones realizadas en Madrid durante Noviembre del 2017](http://www.mambiente.munimadrid.es/opencms/export/sites/default/calaire/Anexos/Episodios/EPISODIO_15_25_NOVIEMBRE_2017.pdf)
+
+Para poder extraer información de dicho documento, habría que nutrirse de librerías que permitan trabajar con documentos PDF.
+He dado con 2 de ellas, "tablulizer" que no está para la versión de R que tenemos (3.4.2) y "pdftools".
+```{r, message=FALSE, warning=FALSE}
+#install.packages("tabulizer", repos = "http://cran.us.r-project.org")
+#install.packages("pdftools", repos = "http://cran.rstudio.com")
+
+#library(pdftools)
+library(lubridate)
+```
+Este código ha sido comentado para que pueda ser probado en consola, ya que aunque he conseguido que funcione el código install.packages dentro un chunk de código R, la parte de `library(pdftools)` falla. Según leo, podría ser debido a que cuando se ejecutan los chunks de un documento Rmd, se ejecutan en un entorno nuevo, sin las librerías de las que ya dispone mi entorno, y cuando va a buscar el paquete pdftools, no lo encuentra. Es un punto en el que tendré que trabajar, pero ya que es sólo la demostración de una vía muerta de este ejercicio, no quiero dedicarle más tiempo. Se puede probar en consola junto con el resto de código que va después y muestra cómo la obtención de información de un documento PDF se coge en un único string con todo el texto de una página del documento PDF, lo que produce un resultado inmanejable.
+
+Adicionalmente se carga la librería lubridate para que pueda utilizarse la función `month(Date)` más adelante.
+
+Una vez cargadas las librerías, procedo a descargar el documento PDF y ver cómo puedo trabajar con el contenido:
+```{r}
+#download.file("http://www.mambiente.munimadrid.es/opencms/export/sites/default/calaire/Anexos/Episodios/EPISODIO_5_9_DICIEMBRE_2017.pdf","./dat/EPISODIO_20170509.pdf", mode = "wb")
+#txt <- pdf_text("dat/EPISODIO_20170509.pdf")
+#txt[3]
+```
+
+Como se puede observar al probar el código en consola, la página donde está la tabla del documento con las fechas donde se ha aplicado el protocolo (página 3), se imprime como un único string. Esto dificulta bastante el poder trabajar con el PDF, contando con las librerías de las que dispongo.
+Tras hablarlo con Luz, he decidido que la fecha a escoger para realizar el ejercicio, la pondré yo a mano, en concreto, será el 21/11/2017.
+Vamos a trabajar con el documento de las lecturas de polución del mes de noviembre de madrid.
+
+## Paso 1: Hacerse con el dataset a utilizar
+
+Una de las cosas que es interesante de cara a la descarga de ficheros, es saber "dónde estoy".
+Con `getwd()` puedo saber dónde tengo la carpeta de trabajo para la sesión de R, y a partir de ahí, generar subdirectorios para la descarga de ficheros. Por ello, el código de 
+`download.file()` incluirá el subdirectorio "dat" cuando se ejecute. 
+
+```{r}
+download.file("http://datos.madrid.es/egob/catalogo/201410-7775093-calidad-aire-diario.txt","./dat/aire_2017.txt",mode="wb")
+```
+
+Pero el dataset descargado no me sirve demasiado, necesito filtrarlo para:
+
+* Una estación
+* Una fecha
+* Un compuesto sobre el cuál se hace la medición.
+
+En el caso de este ejercicio, me centraré en:
+
+* Noviembre
+* La estación de Cuatro Caminos
+* La concentración de dioxido de Nitrógeno (NO2)
+
+Se puede sacar más información sobre el trabajo que será necesario realizar en el dataset para
+extraer la información que busco [enlace al documento explicativo](http://datos.madrid.es/FWProjects/egob/contenidos/datasets/ficheros/Interprete_ficheros_%20calidad_%20del_%20aire_global.pdf).
+
+
+## Paso 2: Seleccionando las lecturas que me ineteresan
+
+En la siguiente imagen, se observa qué forma tiene el documento de las lecturas de los compuestos en las diferentes estaciones de la ciudad de Madrid. Esto me permite hacerme una idea de las cosas que voy a necesitar hacer para sacar los datos que realmente me interesan:
+
+![Imagen 1: Captura del formato del dataset](dat/Captura_Datos.png)
+
+
+Habrá que filtrar la información del documento para descartar fechas, estaciones y compuestos que no me interesen para el objetivo de este ejercicio.
+
+La idea es la siguiente:
+
+* Filtrar el dataset para un compuesto, estación y una fecha.
+* Establecer una serie de días consecutivos a partir de la fecha.
+* Realizar una gráfica de las mediciones en esos días.
+
+~~Una de mis ideas era utilizar llamadas a funciones con safely o posibly, pero al final no lo he hecho, porque se trata de encapsular la función en un bloque possibly, y me venía mejor hacer un print en un bloque if. Quizás esto requiera de posterior revisión, el hablar sobre mejores patrones de diseño utilizando este tipo de sentencias.~~
+Debido a que en esta versión el documento, voy a pasar del uso de funciones para poder explicar paso a paso lo que voy haciendo en diferentes code chunks, el texto anterior deja de tener sentido.
+
+```{r}
+ # Cargo dicho fichero en una tabla
+ aire<- read.table("dat/aire_2017.txt", sep = ",")
+
+ # Selecciono las lecturas de NO2, para el mes especificado 
+ dioxido <- aire[(aire$V4 == 8 & aire$V8 == 11),]
+
+ # La estación hay que montarla como una variable, ya que en el fichero viene partida en 3 partes. Con esto, consigo algo como '28079038' de 3 campos, que es como viene detallado en el fichero de datos.
+ estacion <- paste(dioxido$V1,sprintf("%03d",dioxido$V2),sprintf("%03d",dioxido$V3),sep="") 
+```
+
+Lo que hemos hecho en estas líneas de código es cargar en ciertas variables, las filas de datos que nos interesan, filtrando así, el compuesto `(aire$V4==8)`, el mes `(aire$V4== 11)` y puesto que la estación viene definida en varios campos, hemos creado una según el formato especificado en la documentación. 
+Ahora es cuando hubiera querido utilizar la función probably, pero al final he decidido incluir el valor por defecto con una comprobación if, ya que probably ha de utilizarse encapsulando una función, y no tengo una función que encapsular para esta llamada. Esto tenía sentido cuando 'estacion' era un parámetro que venía definida en la cabecera de la función. Como al final, no voy a hacer el código con funciones, pongo el código para mostrar la idea (lo comento), y meto el valor de la estación a mano.
+
+```{r}
+ # Aquí entra la parte de si la estación especificada existe o no.
+ #if (!(punto_estacion %in% estacion)){
+ #print("La estación introducida no existe, se utilizará la de 4 Caminos.")
+  punto_estacion = 28079038
+ #}#si estacion existe
+```
+
+Habiendo fijado el valor de la estación, filtramos los datos para la estación que buscamos:
+
+```{r}
+ # Con los datos de la estación fijados, descartaremos el resto de líneas del fichero.
+ filtro_estacion <- estacion == punto_estacion
+ dioxido <- dioxido[filtro_estacion,]
+```
+
+## Paso 3: Generar una lista de fechas consecutivas
+
+Este código inicialmente se calculaba en una función. Otra vez, saco su contenido fuera para ir explicándolo paso por paso.
+
+En esta parte, trataremos de generar un conjunto de lectuas de días consecutivos, a partir de una fecha.
+
+```{r}
+  # De momento, conozco la fecha con la que voy a trabajar, así que a partir de 3 valores
+  # genero un string con un formato de fecha. Esto se hacía al llamar a la función. Ahora
+  # lo hacemos a mano antes de seguir trabajando con las fechas.
+  # Adicionalmente, inicializo ndias a 5.
+  fecha <- paste0(2017,11,19)
+  ndias <- 5
+
+  # Aquí, convertimos a tipo date la fecha introducida
+  fecha <- as.Date(fecha,format="%Y%m%d")
+  fecha_limite <- fecha
+```
+
+Fecha límite tiene por misión conseguir el último día del mes, para que el número de días en los que nos centremos, a partir del día seleccionado, no supere el último día del mes.
+
+Estas comprobaciones tendrían más sentido dentro de un bloque función, que hiciese la comprobación de los valores introducidos por parámetro.
+
+```{r}
+  # Aquí, jugaremos a coger el último día del mes introducido
+  month(fecha_limite) <- month(fecha_limite)+1
+  fecha_limite <- as.Date(fecha_limite,format="%Y/%m/%d")-1
+  
+  if ((format(fecha,"%m")!= 11) | fecha +ndias > fecha_limite | ndias < 0){
+    print("La fecha especificada no es válida");
+    print("o bien la fecha de referencia + el número de días superan el límite de días del mes.")
+    print("Se procederá a utilizar la fecha del 19/11/2917")
+    fecha <- as.Date("20171119",format="%Y%m%d")
+  }
+
+```
+
+Las lecturas llevan una marca de validez. Esta marca es algo que debería tenerse en cuenta en los siguientes casos:
+
+* En un dataset no mensual, donde la lectura es una lectura válida del día.
+* Cuando el mes tiene menos de 31 días y los días "sobrantes" tienen lecturas con valor 0
+
+```{r}
+  # Comprobados los límites de fecha, ahora seleccionaremos las columnas que nos interesan
+  # del dataset de lecturas de polución.
+  # Cada día a partir de las columna 9 viene seguida de un calificador de validez en la columna
+  # siguiente:
+  # columnaX    columna X+1
+  #     0015             V
+  # Las columnas con valor V dan la validez a la lectura y son las columnas que nos interesan.
+  # 
+  # Para posicionarme en la columna para la fecha que me pasen, tendré que calcular 
+  # el número de días desde el inicio del mes.
+  fecha_inicio <- as.Date("20171101",format="%Y%m%d")
+  referencia <- as.numeric((fecha - fecha_inicio),units="days")
+  
+  # Aquí, jugaremos a coger el último día del mes introducido
+  month(fecha_limite) <- month(fecha_limite)+1
+  fecha_limite <- as.Date(fecha_limite,format="%Y/%m/%d")-1
+  
+  if ((format(fecha,"%m")!= 11) | fecha +ndias > fecha_limite | ndias < 0){
+    print("La fecha especificada no es válida");
+    print("o bien la fecha de referencia + el número de días superan el límite de días del mes.")
+    print("Se procederá a utilizar la fecha del 19/11/2917")
+    fecha <- as.Date("20171119",format="%Y%m%d")
+  }
+  
+```  
+
+Una vez cuento con una fecha de inicio válida y una serie de días para montar el datset, necesito quedarme con las columnas de lecturas del día correspondiente y de los X posteriores definidos en ndias. Hay que tener en cuenta que cada columna, va seguida del identificador de validez de la lectura, por lo que debo desplazarme de "dos en dos".
+
+```{r}
+  # Con la fecha de referencia, necesito una lista que se corresponda con las posiciones de las lecturas de cada día (sólo lecturas, sin ids de validez), donde pueda utilizar la fecha de referencia para navegar hasta la columna correcta:
+  valores_dia <- seq(0,length(dioxido)-1,2)+9
+  
+  # Con esto, tengo las posiciones a las que quiero atacar dentro del vector de lecturas.
+  # Haré una lista de los días que quiero (5) y obtengo el número del día en base a la fecha de referencia.
+  lista_dias <- seq(0,ndias-1)+as.numeric(format(fecha,"%d"))
+  
+  # Con esto, puedo obtener las lecturas de los días escogidos a partir de la fecha de referencia
+  mis_lecturas<-dioxido[,valores_dia[lista_dias]]
+  
+  # Ahora lista días será una lista de días más "legible"
+  lista_dias<- seq(fecha,length=length(lista_dias), by="1 day")
+  # Y esa lista legible serán los títulos de fecha que me dirán a qué día corresponde cada lectura.
+  names(mis_lecturas)<- lista_dias
+```
+
+## Paso 4: Representación gráfica de los datos.
+
+Tras tatar los datos y centrarme en un caso en el que se ha aplicado el protocolo (el día 21), dispongo de las lecturas desde 2 días antes hasta dos días después de la aplicación del protocolo en noviembre del 2017 en Madrid. Eso puede darme una idea de la tendencia de las emisiones.
+Todo lo que falta ahora es poder mostrarlo en una gráfica que simplifique el entendimiento de estas lecturas.
+Me he decantado por un gráfico de barras, que muestra el nivel máximo leído de la estación de Cuatro Caminos para cada fecha, durante 5 días a partir del 19/11/2017:
+
+```{r}
+ # A este punto, disponemos de las lecturas, fechas y estacion.
+  # Habrá que dibujar la gráfica.
+  # Como los valores de NO2 son numéricos, los paso a un vector para evitarme problemas a
+  # la hora de montar la gráfica
+  mis_lecturas2<-unlist(mis_lecturas)
+  
+  # Incluimos los datos en un gárfico de barras y añadimos un par de títulos.
+  barplot(mis_lecturas2, main="Niveles NO2 pre y post aplicación del Escenario 2 en Madrid", xlab="Fecha", ylab="Concentración de dióxido de nitrógeno")
+  
+```
+
+## Paso 5: Puntos de mejora
+
+Este ejercicio empezó siendo algo mucho más generalista y complejo que lo que he terminado escribiendo como documento. En el proceso, me he visto frustrado en varios momentos y ello me ha llevado a meter tijera y simplificar las cosas.
+Por tanto, como ideas de mejora bien en este documento, bien en .Rmd del futuro me gustaría:
+
+* Entender mejor los ámbitos de los code chunks, por qué library() de determinadas librerías me han fallado.
+* Entender por qué es necesario especificar los repos en los code chunks si quiero hacer un install.packages.
+* Utilizar funciones en vez de ir paso a paso. En este ejercicio, hice 2 funciones aunque fueron algo grandes y no tan sencillas de manejar y al final he hecho un documento monolítico que creo que es más fácil de seguir en su lectura. Imagino que la experiencia realizando otros documentos hará que mejore.
+
+De cara a la explotación de datos abierto sobre polución en Madrid:
+
+* Intentar jugar con una versión de R inferior que me permita trabajar con Tabulizer o de con algo que me permita explotar información de documentos PDF.
+* Implementar algo que me permita la descarga dinámica de los datos en función de la fecha introducida.
+* Implementar algo que controle los datos de forma dinámica, que no permita que el nº de días supere el nº del mes, o lo permita y se descargue el siguiente documento y haga un collage con información de dos meses consecutivos.
+* Implementar algo que genere un listado de fechas "consecutivas" y válidas, pudiendo arrastras la última válida durante las fechas siguientes hasta que de con otra 'V'. Esto no se ha implementado porque los datos elegidos eran todos V, y me puse a pensar qué pasaría si el primer dato escogido fuera no válido, no tendría desde dónde "arrastrar" la información. Se me ha propuesto utilizar `approx`, pero lo poco que he mirado al respecto no me he enterado de mucho. Será cuestión de dedicarle más tiempo.
