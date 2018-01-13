@@ -1,0 +1,212 @@
+---
+title: "05_lectura_excel"
+author: "Aitor Garcia Manterola"
+date: "7 de enero de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Reto lectura automatizada de Excel
+
+Aunque no es el formato ideal, muchas veces nos toca leer de Excel. En R, la mejor alternativa es readxl y en Python, el propio pandas tiene una función read_excel útil para estos casos.
+
+En este reto vamos a leer automáticamente datos de población anual, publicados por el INE. Los datos están disponibles en la siguiente URL: http://www.ine.es/pob_xls/pobmun.zip . El objetivo es, a partir de este archivo comprimido, devolver como formato .csv los datos de todos los años en un único fichero.
+
+Esto tiene una complicación extra, muy común al leer ficheros que se suponen que deberían tener el mismo formato: que no lo tienen. Si te fijas, hay años en que los datos empiezan en la fila 2, otros en la 3, y otros en la 4. También el número de columnas es variable.
+
+Librerías que voy a utilizar:
+
+* Para poder leer ficheros Excel, tendremos que instalar cargar la librería readxl.
+* Para poder trabajar con expresiones regulares, y extraer la parte numérica del nombre de los ficheros, instalaremos y cargaremos la librería stringr
+* Para silenciar una función y poner valor por defecto: purr
+
+```{r, message=FALSE, warning=FALSE}
+install.packages("readxl",repos = "https://cran.rstudio.com")
+library(readxl)
+install.packages("stringr",repos = "http://cran.us.r-project.org")
+library(stringr)
+install.packages("purrr",repos = "https://cran.rstudio.com")
+library(purrr)
+```
+
+## 1. Extracción del año
+
+Crea una función get_year que, en base al nombre del fichero Excel que leerás (pobmun96.xlsx, pobmun13.xls, etc) te devuelva el año al que pertenece: 1996, 2013, ...
+
+Para hacerlo, puedes utilizar expresiones regulares. Si nunca has trabajado con ellas, puedes coger posiciones fijas de la cadena de texto, y convertirlo.
+
+Como solo vienen dos cifras para indicar un año de 4, puedes suponer que a las superiores o iguales a 90, hay que sumar 1900, y a las inferiores, hay que sumar 2000.
+
+```{r}
+get_year <- function(fichero){
+  # Una opción fácil para trabajar con los ficheros es que dado el nombre del fichero, las
+  # posiciones 7 y 8 del nombre siempre tienen los números del fichero. Con un substring, 
+  # lo tendríamos arreglado.
+  #
+  # Pero vamos a jugar con algo distinto, con expresiones regulares.
+  # Con la librería stringr, sólo tengo que buscar la parte que interesa (la numérica) dentro
+  # del nombre del fichero. Con un [0-9] me refiero a un número, e incluyendo + al final
+  # busco que la parte referida al número al menos aparezca una vez.
+  anyo <- as.numeric(str_extract(fichero,"[0-9]+"))
+  
+  # Recogido el número, pasamos a completar el año en 4 dígitos.
+  # El fichero de datos más antiguo data del 96 (1996). El anterior es el 17 (2017).
+  # Para este ejercicio, con comprobar si el número es mayor o igual que 96 me dirá si el año
+  # es anterior al 2000 o no.
+  if(anyo >= 96){
+    anyo <- 1900+anyo
+  }else{
+    anyo <- 2000+anyo
+  }#if
+  #Devolución del resultado
+  anyo
+}
+```
+
+## 2. Gestión de las diferencias en las filas
+
+En la mayor parte de los ficheros, los datos empiezan en la fila 3 (ignorando filas en blanco y la cabecera), pero hay en algunos ficheros que es en la 2 o en la 4.
+
+Crea dos variables, una `first_row_data_default` con el dato por defecto, que es 3, y otra `first_row_data_exceptions` que sea un vector con nombres (R) o diccionario (Python), cuyo nombre / clave sea el año con la excepción y el valor sea la fila donde empieza (2 o 4). Las excepciones son:
+
+    * 1998: 2
+    * 2009: 2
+    * 2012: 4
+    * 2013: 4
+    * 2014: 4
+    * 2015: 4
+
+Ahora crea una función `get_first_row` que acepte por parámetro un año y devuelva la fila en la que empiezan los datos (2 o 4 si se encuentra el año en cuestión entre nuestras excepciones, o 3 en caso contrario).
+
+NOTA: en Python sí podemos utilizar claves numéricas en los diccionarios, pero en R, los nombres del vector deben ser cadenas de texto. Si usas R, esto te forzará a convertir el año en cadena de caracteres para acceder al valor que le corresponde. p.e., haciendo `first_row_data_exceptions[as.character(2010)]`
+
+```{r}
+# Creación de variables:
+first_row_data_default<- 3
+first_row_data_exception <- c(2,2,4,4,4,4)
+# Para que sea un vector, su "clave" será el nombre del valor.
+names(first_row_data_exception) <- c("1998","2009","2012","2013","2014","2015")
+
+# La función la vamos a envolver en possibly, para que devuelva un valor por defecto en caso
+# de error. El valor por defecto será el de la variable por defecto first_row_data_default
+get_first_row <- possibly(function(anyo){
+  first_row_data_exception[[as.character(anyo)]]
+} ,otherwise = first_row_data_default)
+```
+
+## 3. Lectura del excel
+
+Crea una función `read_population` que acepte por argumentos la ruta del fichero y el año al que corresponde, y devuelva un dataframe como salida. Las 3 columnas a extraer en ese dataframe son:
+
+    * cod_provincia: el código numérico de la provincia
+    * cod_municipio: el código numérico del municipio
+    * poblacion: la población global
+
+Dentro de esta función, vas a tener que utilizar la creada en el apartado anterior, para saber en qué fila empezar a leer.
+
+Además, a veces hay diferencias en las columnas. La lógica puede ser:
+
+    * Si hay 6 columnas, tengo que leer la primera, segunda y cuarta
+    * Si no, leo la primera, tercera y quinta
+
+Y también hay que quitar las filas totales que a veces hay entre medias (en algunos de los documentos, después de listar la población de todos los municipios de una provincia, se muestra la población de la provincia como suma de la de sus municipios). Esto se puede hacer eliminando todas aquellas filas que no tengan asignada cualquiera de las 3 filas leídas.
+
+~~De momento, los documentos que no tienen 7 columnas son:
+
+* pobnum04 --> 2004
+* pobnum98 --> 1998
+* pobnum99 --> 1999~~
+
+```{r}
+read_population <- function(ruta, anyo){
+  # Primero, necestaremos saber cuántas filas saltarnos en base al nombre del fichero.
+  # Vamos a imaginar que sí. Trabajaremos desde el working directory.
+  
+  salta_lineas <- get_first_row(get_year(ruta))
+  
+  temp<- read_excel(ruta,col_names = FALSE, skip=salta_lineas)
+  
+  # Decidimos qué columnas seleccionar en función del número de columnas del fichero
+  if (ncol(temp)==6){
+    cols <- c(1,2,4)
+  }else{
+    cols <- c(1,3,5)
+  }#if
+  
+  # Nos quedamos sólo con las filas que están completamente informadas
+  temp <- temp[complete.cases(temp),cols]
+  cols <- c("cod_provincia","cod_municipio","poblacion")
+
+  # Ponemos los nombre de las columnas
+  colnames(temp) <- cols
+  # Devolvemos el data frame
+  temp
+  
+}
+```
+
+## 4. Lectura del archivo comprimido
+
+Ahora, vamos a automatizar la lectura del archivo comprimido. Crea una función que se llame read_population (sin argumentos de entrada), que haga lo siguiente:
+
+   * Se descargue el fichero http://www.ine.es/pob_xls/pobmun.zip
+
+   * Lo descomprima e itere sobre los ficheros contenidos. Para cada uno, hará:
+      + Extrae el año del nombre, usando la función que hemos creado get_year
+      + Lee el contenido del excel, usando read_population
+      + Añada al dataframe devuelto una columna con el año. Es decir, si acabamos de leer los datos de 2015, al dataframe de 3 columnas le añadimos una más que sea anno con valor 2015 para todo ese dataframe
+
+   *  Una todos los dataframes devueltos en uno
+
+   *  Escriba en disco el dataframe resultante en formato .csv, que tendrá 4 columnas (código provincia, código municipio, población y año).
+
+   *  Borre todos los archivos temporales (el zip descargado, su contenido, etc), de forma que el único fichero generado extra al ejecutar la función sea el .csv resultado
+
+```{r}
+population <- function(){
+  # Descargamos el fichero:
+  download.file("http://www.ine.es/pob_xls/pobmun.zip")
+  
+  # Descomprimimos el fichero
+  unzip("pobmun.zip", exdir = "./pobmun")
+  
+  # Creamos unas variables que utilizaremos durante la iteración
+  lista_ficheros <- dir("./pobmun")
+
+    df <- data.frame()
+  
+  # Iteramos
+  for (i in lista_ficheros){
+    i<-paste0("./pobmun/",i)
+    #Debug: print(paste("Proceso fichero:",as.character(i)))
+    # Cogemos el año para luego colocarlo en la columna inicial del dataframe
+    anyo <- get_year(i)
+    #Debug: print(paste("Año:",anyo))
+    # Cargamos la info del fichero en temp 
+    temp <- read_population(i,anyo)
+    # Añadimos la columna del año a temp
+    temp <- cbind(temp,anyo)
+    # Fusionamos el cotenido de temp en el dataframe final
+    df <- rbind(df,temp)
+    
+    #borramos el fichero
+    #file.remove(i)
+  }#for
+  
+  # Generar el csv a partir del dataframe
+  columnas <- c("código provincia","código municipio","población","año")
+  write.csv(df, file = "poblacion.csv",row.names=FALSE, col.names = columnas)
+  
+  # Borro el directorio temporal con los ficheros parciales
+  unlink("./pobmun", recursive = TRUE)
+  
+  # Borro el fichero comprimido
+  file.remove("pobmun.zip")
+}
+
+```
+
+
