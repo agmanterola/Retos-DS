@@ -1,0 +1,132 @@
+---
+title: "Reto datos de accidentes de tráfico"
+author: "Aitor Garcia Manterola"
+date: "14 de enero de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Varios periódicos nacionales publicaban hace unas semanas [noticias como esta](http://www.eldiario.es/politica/DGT-accidentes-trafico_0_673683119.html) con el titular "La DGT se enfrenta al cuarto año consecutivo de aumento de muertes en las carreteras". También afirma:
+
+> En 2014 se rompió la tendencia a la baja que comenzó diez años atrás, siendo 2016 el año más acusado.
+
+La DGT tiene estos datos públicos [aquí](http://www.dgt.es/es/seguridad-vial/estadisticas-e-indicadores/accidentes-30dias/series-historicas/). Vamos a hacer un pequeño análisis sobre estos datos para intentar sacar algunas conclusiones.
+
+
+## 1. Descarga de los datos y estructura del análisis
+
+Los datos, se pueden bajar del link indicado. Descárgate el excel más reciente (el de 2016), que contiene datos desde 1993. Colócalo en una carpeta dat/ en el directorio donde estás programando.
+
+El código, escríbelo en un Rmarkdown o notebook de jupyter.
+
+Una vez finalizado, publica el código en tu repositorio, con una estructura similar a:
+
+> 06_accidentes_trafico/
+  |-- dat/                  (carpeta con los datos)
+  |-- analisis.[Rmd/ipynb]  (con el código)
+  |-- analisis.html         (resultado de ejecutar el notebook)
+
+Como la descarga del fichero con download.file da problemas, primero, crearé el subdirecotrio ./dat para descargar los ficheros. Si éste existe no será necesario crearlo.
+Una vez dado este paso, descargaré el fichero en la ruta deseada.
+```{r}
+if (!file.exists("./dat")){
+  dir.create("./dat")
+}  
+download.file("http://www.dgt.es/Galerias/seguridad-vial/estadisticas-e-indicadores/accidentes-30dias/series-historicas/doc/Series-1993-2016_fallecidos-30-dias.XLSX",destfile = "./dat/2016.xlsx",mode="wb")
+```
+
+## 2. Lectura de los datos
+
+Lee del excel la hoja `M_I-U_Meses`. Quédate con las columnas del año y el total. Es conveniente que pongas nombres a las columnas más cómodos de manejar (todo en minúsculas y sin eñes).
+
+A este punto, tendré que cargar en la sesión las librerías que vaya a necesitar para este ejercicio:
+
+```{r, message=FALSE, warning=FALSE}
+install.packages("readxl",repos = "https://cran.rstudio.com")
+library(readxl)
+```
+
+Una vez cargadas las librerías, cargaré el documento en un objeto en memoria:
+
+```{r}
+accidentes <- read_xlsx(path="./dat/2016.xlsx",sheet="M_I-U_Meses")
+accidentes <- accidentes[,c(1,14)]
+names(accidentes) <- c("anyo", "total_accidentes")
+
+# Aprovecho para hacer algo de limpieza en los datos y utilizar los tipos de datos correctos:
+accidentes$anyo <- as.numeric(accidentes$anyo)
+accidentes$total_accidentes <- as.numeric(accidentes$total_accidentes)
+
+accidentes <- accidentes[complete.cases(accidentes),]
+```
+
+
+## 3. Un gráfico
+
+Pinta en un gráfico de líneas la evolución del total de fallecidos a lo largo de los años.
+
+Escoge la herramienta que prefieras. Puedes usar plot (en R base) o ggplot (más avanzado), o matplotlib (en Python).
+
+¿Qué puedes ver en el gráfico? ¿Han aumentado los fallecidos en los últimos años?
+
+```{r}
+plot(accidentes$anyo, accidentes$total_accidentes, type="l", main="Evolución de accidentes totales por año", xlab="Año", ylab = "Nº Total de accidentes") 
+```
+
+Tal y como puede verse en el gráfico, el número de accidentes ha ido decreciendo hasta el año 2013 (con un total de 1680). Desde entonces, el número ha ido ascendiendo a un total de 1810.
+
+
+## 4. Otro planteamiento
+
+Podríamos pensar que, efectivamente, han aumentado los fallecidos en los últimos años. Pero también podemos plantearnos si el análisis es el correcto. Cada año, hay más vehículos en circulación. Un aumento de los fallecidos podría ser simplemente porque hay más coches.
+
+Cambiemos la métrica del análisis. En lugar de mirar el número total de fallecidos, vamos a mostrar la evolución del número de fallecidos por cada millón de vehículos.
+
+Hay datos sobre la cantidad de vehículos [aquí](http://www.dgt.es/es/seguridad-vial/estadisticas-e-indicadores/parque-vehiculos/series-historicas/). Descárgate el excel de 2016 y colócalo en la carpeta `dat/`.
+
+Lee del excel la hoja parque_tipos. Quédate con las columnas del año y el total. Una vez hecho, cruza los datos por año con los datos de fallecidos, de forma que tengas en el mismo dataframe el año, el número de fallecidos y el número de vehículos.
+
+Ahora, calcula en una nueva columna el nuevo indicador: el ratio de fallecidos por cada millón de vehículos.
+
+Sobre estos datos, fíjate en los últimos años. En la noticia, afirmaban que el número de fallecidos no paraba de crecer desde 2014. ¿Qué pasa con el ratio?
+
+Vuelve a pintar el gráfico, pero presentando la evolución del ratio a lo largo de los años.
+
+```{r}
+# Descargo el fichero
+download.file("http://www.dgt.es/Galerias/seguridad-vial/estadisticas-e-indicadores/parque-vehiculos/series-historicas/series_parque_2016.xlsx",destfile = "./dat/coches.xlsx",mode="wb")
+
+coches <- read_xlsx(path="./dat/coches.xlsx",sheet="parque_tipos")
+coches <- coches[,c(1,9)]
+names(coches) <- c("anyo", "total_coches")
+
+# Aprovecho para hacer algo de limpieza en los datos y utilizar los tipos de datos correctos:
+coches$anyo <- as.numeric(coches$anyo)
+coches$total_coches <- as.numeric(coches$total_coches)
+
+coches <- coches[complete.cases(coches),]
+
+# Ahora habrá que cruzar los dos data frames, por la columna anyo
+ relacion_acc_cch<-merge(accidentes, coches, by="anyo")
+ 
+# Una vez relacionados, hay que incluir el ratio
+relacion_acc_cch <- cbind(relacion_acc_cch, ratio=(relacion_acc_cch$total_accidentes/relacion_acc_cch$total_coches)*100)
+
+# Me centro en los últimos datos (amplío)
+relacion_acc_cch_ampliado <- relacion_acc_cch[relacion_acc_cch$anyo>2012,]
+
+
+# Y por último, dibujar el gráfico total
+plot(relacion_acc_cch$anyo, relacion_acc_cch$ratio, type="l", main="% Accidentes/Nº coches en el tiempo", xlab="Año", ylab = "% Accidentes/Nº Coches")
+
+# Y el gráfico centrado en los años del 2013 en adelante
+plot(relacion_acc_cch_ampliado$anyo, relacion_acc_cch_ampliado$ratio, type="l", main="% Accidentes/Nº coches desde el 2013", xlab="Año", ylab = "% Accidentes/Nº Coches")
+
+```
+
+Como puede verse, el ratio crece del 2013 al 2014, pero decae al mínimo en el 2015 para volver a subir a partir de ahí.
+
+Parece que la tendencia no aumenta constantemente a partir del 2013, sino que en el 2015 se alcanza un mínimo histórico en ese ratio. 
