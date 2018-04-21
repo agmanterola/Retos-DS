@@ -1,0 +1,508 @@
+---
+title: "Reto del análisis para campañas de buzoneo"
+author: "Aitor Garcia Manterola"
+date: "16 de abril de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Planteamiento del Reto: Buzoneo:
+
+Estás trabajando en una empresa que organiza campañas de márketing. Varios clientes te piden que les organices una serie de campañas de buzoneo en Madrid, para las cuales tienen un público objetivo definido.
+
+Tu trabajo las próximas 2 semanas será optimizar el esfuerzo dedicado. Es decir, intentar llegar al mayor número de personas de su objetivo dejando el menor número de folletos.
+
+El buzoneo consiste en enviar a un repartidor de folletos a una serie de portales. El repartidor dejará un folleto en cada buzón, igual al número de viviendas existentes en tal portal.
+
+## Planteamiento del Reto: Las Camapañas:
+
+### Clases de español para chinos
+
+La empresa Ni hao España! ofrece un curso exprés de español a gente de procedencia china para aprender el idioma en 12 semanas. Su público objetivo es gente nacida en China.
+
+### Gafas de sol
+
+La empresa Joquers ha creado unas nuevas gafas de sol modernas y low-cost. Su plan es conseguir que los estudiantes las lleven en las universidades en las que estudian y se extienda su compra por imitación. Su público son los estudiantes universitarios que están cursando actualmente estudios de grado.
+
+### Móviles adaptados
+
+Una empresa española de fabricación de teléfonos móviles acaba de lanzar el Yayofón. Se trata de un dispositivo que trae instalados tres botones de acceso rápido: uno al teléfono, otro al whatsapp y otro a la galería de fotos. La pantalla está adaptada para letras grandes y ofrecen un servicio gratuito de migración de agenda de contactos, historial de conversaciones y fotos del antiguo dispositivo al nuevo. Tenían claro que su público objetivo son los mayores de 65. Además, mediante un estudio de mercado, han descubierto que entre las mujeres tienen un grado de aceptación varios puntos por encima que entre los hombres. Por ello, han decidido que su público objetivo son mujeres mayores de 65.
+
+### Transporte para ejecutivos
+
+La empresa Huver es competencia de los taxis en Madrid. Ofrecen un servicio de transporte con conductor a través de su aplicación móvil. Están actualmente lanzando una nueva línea de coches llamados Sharknado X con servicios exclusivos para ejecutivos: coches lujosos con conectividad móvil asegurada (incluso en túneles), nevera con bebidas con alto contenido en cafeína y chófers con puntuación en conducción agresiva certificada de al menos 9 sobre 10. Definen a su público objetivo como hombres y mujeres con niveles de renta muy altos, con edades comprendidas entre los 35 y 50 años y con un nivel de estudios de diplomatura, licenciatura o máster.
+
+## Planteamiento del Reto: Hitos
+
+### Estructura del proyecto
+
+Tu proyecto deberá acabar teniendo esta estructura:
+
+```
+11_buzoneo/
+  |-- dat/
+    |-- raw/: carpeta que contiene los datos en crudo
+    |-- sscc_madrid_data.csv: resultado de tratar raw/
+  |-- analisis.[Rmd|ipython]
+``` 
+
+### Creación del dataset
+
+Examina el listado de enlaces en el apartado de Datos. Selecciona aquellos que vas a necesitar para poder segmentar la población y guárdalos en `dat/raw/`.
+
+Crea una función que se llame `creaDataset` que lea los datos necesarios de `dat/raw`, los trate, los cruce y acabe generando el archivo `dat/sscc_madrid_data.csv`.
+
+Es importante que este csv resultante sea cómodo de utilizar: nombres de columna intuitivos, nulos tratados, y los indicadores que van como filas o columnas bien elegidos. Te recomiendo que uses un formato que tenga una fila por cada sección censal, y los indicadores que necesites estén en columnas. Estos indicadores serán: número total de viviendas, número total de personas, número de personas nacidas en China, número de estudiantes de grado, etcétera.
+
+## Creación del dataset: Solución
+Como hay que crear una función, se incluye en un único bloque todo el código realizado.
+Para más detalle sobre el estudio del dataset, puede consultarse la parte del anexo, donde se explicará cada caso por separado.
+
+```{r}
+library(readxl)
+library(dplyr)
+library(stringr)
+
+crea_dataset <- function(){
+  
+  ## Tratamiento de la fuente: indicadores resumen
+  indicadores_resumen <-  read.csv(file="./dat/raw/1_C2011_ccaa13_Indicadores.csv", header=TRUE, sep=",")
+    indicadores_resumen[is.na(indicadores_resumen)] <- 0
+  indicadores_resumen<- indicadores_resumen %>% 
+  filter(cmun==79) %>%
+  mutate(cod_secc=cpro*1000+cmun,
+         distrito=dist,
+         seccion=secc,
+         id=as.numeric(paste0(cod_secc,sprintf("%02d",distrito),sprintf("%03d",seccion))),
+         tot_poblacion=as.numeric(t1_1),
+         hombres=as.numeric(t2_1),
+         mujeres=as.numeric(t2_2),
+         tercer_grado=as.numeric(t12_5),
+         viviendas=t16_1)%>%
+  select(id,cod_secc,distrito,seccion,tot_poblacion,hombres,mujeres,tercer_grado,viviendas)
+  
+  ## Tratamiento de la fuente: personas entre 35 y 50 años
+  HM3550 <- read_excel("./dat/raw/5_HM3550.xls", col_names=FALSE, skip=8)
+  HM3550<-HM3550[1:2420,]
+  HM3550<-HM3550%>%
+  mutate(id=as.numeric(unlist(HM3550$X__1)),
+         cod_secc=substr(HM3550$X__1,1,5),
+         distrito=as.numeric(substr(HM3550$X__1,6,7)),
+         seccion=as.numeric(substr(HM3550$X__1,8,10)))%>%
+  group_by(id)%>%
+  mutate(tot_pers_35_50=sum(X__2,X__3,X__4))%>%
+  select(id,cod_secc,distrito,seccion,tot_pers_35_50)
+  
+  ##Tratamiento de la fuente: Mujeres mayores de 65 años
+  MM65<- read_excel("./dat/raw/4_Mujeres_Mas65.xls",col_names = FALSE, skip=6)
+  MM65<-MM65[,c(1,23:16)]
+  MM65<-MM65[-1:-8694, ,drop=FALSE]
+  MM65<-MM65[which(str_detect(MM65$X__1,"[0-9]{10}") & !is.na(MM65$X__1)), ]
+  MM65<-MM65%>%
+    filter(str_detect(MM65$X__1,"28079"))
+  MM65<-MM65%>%
+    mutate(id=as.numeric(MM65$X__1),
+         cod_secc=substr(MM65$X__1,1,5),
+         distrito=as.numeric(substr(MM65$X__1,6,7)),
+         seccion=as.numeric(substr(MM65$X__1,8,10)))%>%
+    group_by(id)%>%
+    mutate(tot_pers_plus65=as.numeric(X__23)+as.numeric(X__22)+
+               as.numeric(X__21)+as.numeric(X__20)+
+               as.numeric(X__19)+as.numeric(X__18)+
+               as.numeric(X__17)+as.numeric(X__16))%>%
+    select(id,cod_secc,distrito,seccion,tot_pers_plus65)
+  
+  ## Prepracion de la fuente: Personas nacidas en China
+  china <- read_excel("./dat/raw/3_Seccion_China.xls",col_names = FALSE, skip=6)
+  china<- china %>% filter(str_detect(X__1,"[0-9]{10}") & !is.na(X__1))
+
+  china<-china %>% 
+    mutate(id=as.numeric(X__1),
+           cod_secc=as.numeric(substr(X__1,1,5)),
+           distrito=as.numeric(substr(X__1,6,7)),
+           seccion=as.numeric(substr(X__1,8,10)),
+           total_china=as.numeric(X__2)) %>%
+    select(id, cod_secc,distrito,seccion,total_china)
+  
+  ## Preparacion de la fuente: horquilla de salarios medios
+  salarios <-read_excel("./dat/raw/2_Renta_media_tramo_secc_2014.xls", col_names=FALSE, skip=7)
+  salarios<-salarios %>% 
+    filter(! is.na(X__2))
+  salarios<-salarios%>% 
+    mutate(municipio=28079,
+         distrito=as.numeric(substr(X__1,1,2)),
+         seccion=as.numeric(substr(X__1,6,8)),
+         id=as.numeric(paste0(28079,substr(salarios$X__1,1,2),substr(salarios$X__1,6,8))),
+         tramo=as.numeric(X__3),
+         desc_tramo=X__4)%>%
+     select(id,municipio,distrito,seccion,tramo,desc_tramo)%>%
+     arrange(id)
+  
+  ##Preparacion de la fuente: estudiantes cursando grado
+  grados <-read_excel("./dat/raw/6_Censo_EstudiosGrado.xlsx", col_names=FALSE, skip=13)
+  grados<-grados %>% 
+    mutate(id=as.numeric(substr(X__1,nchar(X__1)-10+1,nchar(X__1))),
+         municipio=as.numeric(substr(as.character(id),1,5)),
+         distrito=as.numeric(substr(as.character(id),6,7)),
+         seccion=as.numeric(substr(as.character(id),8,10)),
+         total_estudiantes_grado=X__3)%>%
+    select(id,municipio,distrito,seccion,total_estudiantes_grado)
+  
+## Construccion de un unico dataset:
+  dataset<-salarios %>%
+    merge(y = indicadores_resumen, by = "id", all.x = TRUE) %>%
+    mutate(distrito=distrito.x,
+         seccion=seccion.x) %>%
+    select(id, tot_poblacion,tercer_grado,viviendas)
+  
+ # Cruzamos el resultado con Hombre y Mujeres de entre 35 y 50 años
+  dataset<- dataset %>%
+    merge(y= HM3550, by="id", all.x=TRUE) %>% 
+    select(id, tot_poblacion,tercer_grado,viviendas,tot_pers_35_50)
+
+ # Cruzamos el resultado con Mujeres mayores de 65 años
+  dataset <- dataset %>%
+    merge(y=MM65, by="id", all.x=TRUE) %>% 
+    select(id, tot_poblacion,tercer_grado,viviendas,tot_pers_35_50,tot_pers_plus65)
+
+ # Cruzamos el resultado con Hombres y Mujeres nacidos en China
+  dataset<- dataset %>%
+    merge(y=china, by="id", all.x=TRUE) %>% 
+    select(id, tot_poblacion,tercer_grado,viviendas,tot_pers_35_50,tot_pers_plus65,total_china)
+
+# Cruzamos el resultado con personas que estén estudiando algún grado universitario
+  dataset <- dataset %>%
+    merge(y=grados, by="id", all.x=TRUE) %>% 
+    select(id, tot_poblacion,tercer_grado,viviendas,tot_pers_35_50,tot_pers_plus65,total_china,total_estudiantes_grado)
+
+# Recuperamos el distrito y la seccion de salarios y renombramos algunas columnas:
+  dataset<- dataset %>%
+    merge(y=salarios, by="id", all.x=TRUE) %>% 
+    mutate(total_poblacion=tot_poblacion,
+         total_entre_35_50=tot_pers_35_50,
+         mujeres_mas_65=tot_pers_plus65,
+         estudiantes_de_grado=total_estudiantes_grado) %>% 
+    select(id,municipio,distrito,seccion,tramo,desc_tramo,viviendas,total_poblacion,total_entre_35_50,mujeres_mas_65,total_china,estudiantes_de_grado)
+  
+# Limpieza del dataset final
+  dataset[is.na(dataset)]<-0
+  
+# Escritura del dataset final
+  write.table(dataset, file = "./dat/sscc_madrid_data.csv",col.names = TRUE, row.names = TRUE, sep =",") 
+}
+
+```
+
+
+# Anexo: 
+## Creación del dataset: Solución
+
+El primer problema será escoger las fuentes de datos.
+En esta parte, comentaré los detalles y problemas que me voy encontrando con cada una de ellas.
+
+## Los datos resumidos del INE: Definiendo la sección censal
+
+La información obtenida de:
+- [Información resumida de población y hogares por secciones](http://www.ine.es/censos2011_datos/cen11_datos_resultados_seccen.htm)
+
+es para datos referidos al año 2011.
+
+En principio el acceso a los datos es sencillo. Consultando información adicional a los datos en sí, encontraremos las listas estándar de comunidades autónomas, donde podremos observar que la comunidad de Madrid tiene el código 13.
+Con esto, ya podemos centrarnos en un único fichero CSV, el que tiene el número 13 en su nombre, ya que el listado de ficheros de datos, coincide con el nº de comunidades autónomas especificadas en el listado:
+
+![CCAA y ficheros asociados](./dat/NumeroDeCCAA.png)
+
+De la misma manera, de cara a poder traducir al final la sección censal por la cual están formadas las "claves" de los datos, será necesario averiguar los códigos de provicia y municipio (28 y 079 respectivamente).
+
+Por tanto, de cara a todas las fuentes, habrá que tratar de filtrar por la sección _**28079**_.
+
+El siguiente paso una vez definida la sección, es decidir qué columnas pueden ser útiles de la parte del resumen.
+
+
+Aprovechando markdown, ejecutaré el código que selecciona una serie de columnas que a priori podrían ser útiles:
+```{r }
+indice_resumen <- read_excel("./dat/raw/0_indicadores_seccen_rejilla.xls", col_names=FALSE, skip=7, sheet="indicadores")
+indice_resumen[c(1,2,3,4,74,111),]
+```
+
+Decididos los datos a utilizar, paso a filtrar para el municipio concreto, seleccionar los datos que quiero utilizar el dataset de resumen y aprovecho para construir un código único de sección censal que intentaré replicar en todos los datasets:
+```{r eval=FALSE, message=FALSE}
+indicadores_resumen <-  read.csv(file="./dat/raw/1_C2011_ccaa13_Indicadores.csv", header=TRUE, sep=",")
+```
+Antes de empezar a calcular, habría que limpiar los datos. Buscar nulos y sustituirlos por valor 0 en caso indicador, o algún código en caso de no ser un indicador. Sería raro que el censo del INE tenga nulos en la sección censal, pero estaría bien comprobarlo
+```{r eval=FALSE}
+sum(is.na(unlist(indicadores_resumen$cmun)))+sum(is.na(unlist(indicadores_resumen$dist)))+sum(is.na(indicadores_resumen$secc))==0
+# TRUE
+``` 
+
+Siendo el caso, lo primero sería incluir los 0 en los indicadores:
+```{r eval=FALSE}
+indicadores_resumen[is.na(indicadores_resumen)] <- 0
+```
+
+Lo que queda después es filtrar por el municipio de Madrid, construir el código seccional que utilizaré en todos los datasets, poner nombres algo más legibles a las columnas y seleccionar las columnas finales del dataset:
+```{r eval=FALSE}
+indicadores_resumen<- indicadores_resumen %>% 
+  filter(cmun==79) %>%
+  mutate(municipio=cpro*1000+cmun,
+         distrito=dist,
+         seccion=secc,
+         id=as.numeric(paste0(cod_secc,sprintf("%02d",distrito),sprintf("%03d",seccion))),
+         tot_poblacion=as.numeric(t1_1),
+         hombres=as.numeric(t2_1),
+         mujeres=as.numeric(t2_2),
+         tercer_grado=as.numeric(t12_5),
+         viviendas=t16_1)%>%
+  select(id,cod_secc,distrito,seccion,tot_poblacion,hombres,mujeres,tercer_grado,viviendas)
+#Para ver cómo queda la sección censal puedo ejecutar:
+#table(indicadores_resumen$id)
+```
+
+
+Con estos cambios, la parte de resumen queda cerrada.
+
+
+## Datos seccionados por edad, sexo y país orígen
+
+- [Edad, sexo, país origen por secciones](http://www.ine.es/dynt3/inebase/es/index.htm?type=pcaxis&file=pcaxis&path=%2Ft20%2Fe245%2Fp07%2F%2Fa2017)
+
+Esta direccion me proporciona datos para la comunidad autónoma de Madrid.
+Me será útil para seleccionar datos de aquellas mujeres que sean mayores de 65 años (para la camapaña Yayofón), y para seleccionar hombres y mujeres que estén entre los 35 y 50 años (asumiré `35<=X<50`) para la camapaña de Huver.
+
+### Personas de entre 35 y 50 años
+```{r eval=FALSE }
+HM3550 <- read_excel("./dat/raw/5_HM3550.xls", col_names=FALSE, skip=8)
+```
+Para la limpieza, miraré si hay nulos en el código:
+```{r eval=FALSE }
+HM3550[is.na(HM3550$X__1),]
+```
+Resulta que sí. Si miro el dataset cargado, veo que al final hay una serie de filas que no sirven:
+
+![Filas extra y límite de los datos](./dat/ColaHM3550.png)
+
+Con esto, ya tengo el número de filas que quiero filtrar para el dataset.
+Esta fuente contiene el número de personas (hombres y mujeres) por cada quinquenio de edad entre los 35 y 50 años, siendo 35<=X<50.
+Si miro la estructura, es muy sencilla, un código que se refiere a la sección censal y el número de personas por cada grupo de quinquenio.
+En este caso, la transformación es sencilla, será sumar el número de personas de cada quinquenio para la sección censal y poner los nombres:
+
+```{r eval=FALSE }
+HM3550<-HM3550[1:2420,]
+  HM3550<-HM3550%>%
+  mutate(id=as.numeric(unlist(HM3550$X__1)),
+         municipio=substr(HM3550$X__1,1,5),
+         distrito=as.numeric(substr(HM3550$X__1,6,7)),
+         seccion=as.numeric(substr(HM3550$X__1,8,10)))%>%
+  group_by(id)%>%
+  mutate(tot_pers_35_50=sum(X__2,X__3,X__4))%>%
+  select(id,cod_secc,distrito,seccion,tot_pers_35_50)
+```
+
+El dataset de personas de entre 35 y 50 años estaría cerrado.
+
+### Mujeres de más de 65 años
+
+El principal problema con este caso es que la cantidad a mostrar (y por ende a descargar en fichero como se ha hecho en el dataset de personas de entre 35 y 50 años), es que el número de cledas es superior a 10.000 y el sistema no deja mostrar tanta información. 
+![Límite de datos a mostrar en la fuente de datos agrupados por quinquenios](./dat/ProblemaSeleccionINE.png)
+Por contra, permite bajar el fichero de agrupacón de personas por sección censal, sexo y agrupaciones quinquenales completo. Por tanto, habrá que recortar un poco más que en el anterior caso.
+
+```{r eval=FALSE }
+library(stringr)
+MM65<- read_excel("./dat/raw/4_Mujeres_Mas65.xls",col_names = FALSE, skip=6)
+str(MM65)
+# Ver la estrucutura ayuda a escoger las columnas deseadas:
+MM65<-MM65[,c(1,23:16)]
+```
+El problema con este dataset es que tenemos toda la lista de secciones censales para "Ambos Sexos", después la lis completa otra vez para "Hombres" y finalmente la lista de secciones censales de "Mujeres" que es la que interesa. 
+```{r eval=FALSE }
+# Esto da una de idea de a partir de qué filas comienza cada sección:
+which(MM65$X__1 %in% c("Ambos Sexos","Hombres","Mujeres"))
+```
+
+Hay que dar con la manera de seleccionar únicamente las filas que nos interesan, dentro de la última sección:
+```{r eval=FALSE }
+# De esta forma, me sólo se seleccionan las filas de la última sección: Mujeres
+MM65<-MM65[-1:-8694, ,drop=FALSE]
+```
+Como ya ocurría en otros dataset, hay que quitar las filas vacías o que no tienen información sobre códigos de secciones censales:
+```{r eval=FALSE }
+MM65<-MM65[which(str_detect(MM65$X__1,"[0-9]{10}") & !is.na(MM65$X__1)), ]
+# Comprobación de nulos:
+sum(is.na(MM65))==0
+
+# Llegados a este punto, se puede comenzar a transformar el dataset.
+
+# Filtrado para 28079
+MM65<-MM65%>%
+  filter(str_detect(MM65$X__1,"28079"))
+# Preparación de los campos para que la parte de códigos de secciones censales, distritos y secciones sean igual que en el resto de datsets:
+MM65<-MM65%>%
+  mutate(id=as.numeric(MM65$X__1),
+         municipio=substr(MM65$X__1,1,5),
+         distrito=as.numeric(substr(MM65$X__1,6,7)),
+         seccion=as.numeric(substr(MM65$X__1,8,10)))%>%
+  group_by(id)%>%
+  mutate(tot_pers_plus65=as.numeric(X__23)+as.numeric(X__22)+
+               as.numeric(X__21)+as.numeric(X__20)+
+               as.numeric(X__19)+as.numeric(X__18)+
+               as.numeric(X__17)+as.numeric(X__16))%>%
+  select(id,cod_secc,distrito,seccion,tot_pers_plus65)
+```
+Con esto, la preparación del dataset de Mujeres mayores de 65 años quedaría cerrada.
+
+
+### Personas nacidas en China
+
+Este dataset ha sido descargado al seleccionar las secciones censales de Madrid y filtrando para que el país de naciemiento sea China.
+
+```{r eval=FALSE }
+china <- read_excel("./dat/raw/3_Seccion_China.xls",col_names = FALSE, skip=6)
+# Limpieza de regitros sin información de sección censal:
+china<- china %>% filter(str_detect(X__1,"[0-9]{10}") & !is.na(X__1))
+# Transformación:
+china<-china %>% mutate(id=as.numeric(X__1),
+ municipio=as.numeric(substr(X__1,1,5)),
+ distrito=as.numeric(substr(X__1,6,7)),
+ seccion=as.numeric(substr(X__1,8,10)),
+ total_china=as.numeric(X__2)) %>%
+select(id, cod_secc,distrito,seccion,total_china)
+
+#Comprobacion de nulos:
+sum(is.na(china))==0
+
+```
+Con esto, el dataset de personas nacidas en China estaría cerrado.
+
+
+## Datos de renta media por tramos y seccion censal
+
+Los datos de renta media asignan a cada seccion censal el tramo salarial medio en el que se sitúa.
+En este caso, la fuente es un fichero excel.
+El tratamiento es similar a otros, filtrar la cabecera, el pie, montar la sección censal y seleccionar las columnas que interesen:
+```{r eval=FALSE }
+# Al leer el documento, filtro la cabecera:
+salarios <-read_excel("./dat/raw/2_Renta_media_tramo_secc_2014.xls", col_names=FALSE, skip=7)
+
+salarios<-salarios %>% 
+  filter(! is.na(X__2))
+salarios<-salarios%>% 
+  mutate(municipio=28079,
+         distrito=as.numeric(substr(X__1,1,2)),
+         seccion=as.numeric(substr(X__1,6,8)),
+         id=as.numeric(paste0(28079,substr(salarios$X__1,1,2),substr(salarios$X__1,6,8))),
+         tramo=as.numeric(X__3),
+         desc_tramo=X__4)%>%
+         select(id,municipio,distrito,seccion,tramo,desc_tramo)%>%
+         arrange(id)
+```
+Habría que comprobar que no hay nulos a tratar en el dataset:
+```{r eval=FALSE }
+sum(is.na(salarios))==0
+```
+Y con esto, el dataset de salarios estaría cerrado.
+
+
+## Datos de estudiantes de grado seccion censal
+
+El formato de este dataset es un poco distinto a los anteriores, viene filtrado para las secciones censales del 28079, e incluye el total de personas estudiantes de grado.
+
+```{r eval=FALSE }
+grados <-read_excel("./dat/raw/6_Censo_EstudiosGrado.xlsx", col_names=FALSE, skip=13)
+str(grados) # La estructura es sencilla, nos interesan las dos últimas columnas.
+sum(is.na(grados$X__1)+is.na(grados$X__3))==0 # No hay nulos
+
+head(grados,3) # El primer registro ya es la primera sección censal que buscamos.
+tail(grados,3) # El útlimo registro no es nulo, así que la limpieza está hecha.
+```
+Lo diferente en este dataset es que la sección censal hay que extraerla de un string más largo.
+
+```{r eval=FALSE }
+grados<-grados %>% 
+  mutate(id=as.numeric(substr(X__1,nchar(X__1)-10+1,nchar(X__1))),
+         municipio=as.numeric(substr(as.character(id),1,5)),
+         distrito=as.numeric(substr(as.character(id),6,7)),
+         seccion=as.numeric(substr(as.character(id),8,10)),
+         total_estudiantes_grado=X__3)%>%
+  select(id,municipio,distrito,seccion,total_estudiantes_grado)
+  
+```
+Con esto, el dataset de grados se da por cerrado.
+
+## Cruzando los datasets:
+
+A la hora de cruzar los dataset, cogeremos uno como referencia y le iremos cruzando el resto uno a uno.
+La sospecha inicial sería que los dataset respetasen el número de secciones por distrito, dando lugar a un mismo número de observaciones en todos los dataset.
+
+![Estructuras de los dataset](./dat/numero_observaciones.png)
+
+La realidad muestra que esto no es cumple, por lo que escoger uno de los dataset con el máximo número de observaciones, lo convertirá en el dataset de "referencia". A partir de este, se cruzarán el resto de datasets uno a uno, respetando siempre el número de observaciones del dataset de referencia, que quedará a la izquierda de la operación de cruce `left_join(referencia, nuevo_dataset,by=columna por la que cruzar)`
+
+Para ello, `salarios` va a ser el dataset de referencia en este ejercicio:
+```{r eval=FALSE}
+# Cruzamos salarios con indicadores resumen --> salen las mismas observaciones que en salarios.
+dataset<-salarios %>%
+  merge(y = indicadores_resumen, by = "id", all.x = TRUE) %>%
+  mutate(distrito=distrito.x,
+         seccion=seccion.x) %>%
+  select(id, tot_poblacion,tercer_grado,viviendas)
+```
+
+En este bloque, se ha cruzado salarios con indicadores resumen. Los campos comunes a excepcion del campo de cruce, se han renombrado incluyéndoles el sufijo x o y en función de si es el primer o segundo dataset del cruce. Por ello, se han renombrado los comunes del dataset de referencia, para mantenerlos.
+
+Como parece que habría que hacer esto cada vez para mantener los campos de seccion y distrinto, en vez de ello, no se incluirán hasta el final, donde se volverá a cruzar con el dataset de referencia para recuperarlos.
+
+```{r eval=FALSE}
+# Cruzamos el resultado con Hombre y Mujeres de entre 35 y 50 años
+dataset<- dataset %>%
+  merge(y= HM3550, by="id", all.x=TRUE) %>% 
+  select(id, tot_poblacion,tercer_grado,viviendas,tot_pers_35_50)
+
+# Cruzamos el resultado con Mujeres mayores de 65 años
+dataset <- dataset %>%
+  merge(y=MM65, by="id", all.x=TRUE) %>% 
+  select(id, tot_poblacion,tercer_grado,viviendas,tot_pers_35_50,tot_pers_plus65)
+
+# Cruzamos el resultado con Hombres y Mujeres nacidos en China
+dataset<- dataset %>%
+  merge(y=china, by="id", all.x=TRUE) %>% 
+  select(id, tot_poblacion,tercer_grado,viviendas,tot_pers_35_50,tot_pers_plus65,total_china)
+
+# Cruzamos el resultado con personas que estén estudiando algún grado universitario
+dataset <- dataset %>%
+  merge(y=grados, by="id", all.x=TRUE) %>% 
+  select(id, tot_poblacion,tercer_grado,viviendas,tot_pers_35_50,tot_pers_plus65,total_china,total_estudiantes_grado)
+
+# Recuperamos el distrito y la seccion de salarios y renombramos algunas columnas:
+dataset<- dataset %>%
+  merge(y=salarios, by="id", all.x=TRUE) %>% 
+  mutate(total_poblacion=tot_poblacion,
+         total_entre_35_50=tot_pers_35_50,
+         mujeres_mas_65=tot_pers_plus65,
+         estudiantes_de_grado=total_estudiantes_grado) %>% 
+  select(id,municipio,distrito,seccion,tramo,desc_tramo,viviendas,total_poblacion,total_entre_35_50,mujeres_mas_65,total_china,estudiantes_de_grado)
+``` 
+
+El problema ahora es que no todos los dataset de origen tenían el mismo número de sectores censales, por lo que aquellos que tuvieran menos, encontrarán `NA`s asignados a los indicadores para las cuales no tenian sector censal.
+Se puede comprobar:
+```{r eval=FALSE}
+sum(is.na(dataset))
+```
+
+Pero en los sectores censales, no habrá valores nulos:
+```{r eval=FALSE}
+sum(is.na(dataset$id))
+```
+Por tanto, en los indicadores que falten, pueden incluirse 0 como valor por defecto
+```{r eval=FALSE}
+dataset[is.na(dataset)]<-0
+```
+
+## Construcción del CSV
+
+```{r eval=FALSE}
+write.table(dataset, file = "./dat/sscc_madrid_data.csv",col.names = TRUE, row.names = TRUE, sep =",")
+```
+
