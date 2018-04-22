@@ -185,7 +185,7 @@ crea_dataset <- function(){
          total_entre_35_50=tot_pers_35_50,
          mujeres_mas_65=tot_pers_plus65,
          estudiantes_de_grado=total_estudiantes_grado) %>% 
-    select(id,municipio,distrito,seccion,tramo,desc_tramo,viviendas,total_poblacion,total_entre_35_50,mujeres_mas_65,total_china,estudiantes_de_grado)
+    select(id,municipio,distrito,seccion,tramo,desc_tramo,viviendas,total_poblacion,tercer_grado,total_entre_35_50,mujeres_mas_65,total_china,estudiantes_de_grado)
   
 # Limpieza del dataset final
   dataset[is.na(dataset)]<-0
@@ -196,6 +196,70 @@ crea_dataset <- function(){
 
 ```
 
+### Ránking de secciones
+
+Para cada campaña y sección, calcula lo siguiente:
+
+  * Total personas público objetivo
+  * Porcentaje de personas de la sección que son público objetivo
+  * Total folletos necesarios (que corresponde al total de viviendas de la sección)
+  * Tasa de objetivo por cada 1000 folletos. Es decir, es 1000 * num_personas_objetivo / total_folletos
+
+Muestra el top 10 de las secciones más interesantes en las que buzonear (al menos en formato tabla, y de forma opcional, pintadas en un mapa). Una sección es más interesante cuanto mayor sea su tasa objetivo: más público alcanzado entregando menos folletos.
+
+Ten en cuenta que en algunas campañas pueden tener indicadores mixtos que igual no puedes obtener en conjunto (p.e. tienes una columna `número personas con estudios universitarios` y otra `número de personas entre 35 y 50 años`). Para sacar el indicador combinado, es decir, que cumplan ambos requisitos, puedes suponer que son independientes y multiplica uno de ellos por el porcentaje de la población que cumplen el segundo. Siguiendo este ejemplo, si para una determinada sección, tenemos que:
+
+   * Total personas: 1000
+   * Núm personas con estudios universitarios: 200
+   * Núm personas entre 35 y 50 años: 250
+   * El resultado para calcular núm personas con estudios universitarios y que tengan entre 35 y 50 años sería: 200 * (250 / 1000) = 50
+
+### Ránking de secciones: Solución
+
+Lo primero será cargar el dataset:
+```{r}
+dataset <- read.csv("./dat/sscc_madrid_data.csv")
+```
+
+Para cada campaña hay que hacer básicamente los mismos cálculos. Eso sí, usando diferentes indicadores y en algún caso, utilizando más de un indicador (indicadores compuestos).
+Tal y como está organizada la información:
+
+Camapaña|Tipo_indicador|Indicador(es)            
+--------|--------------|-------------------------
+Ni Hao  |Simple        |total_china              
+Joquers |Simple        |estudiantes_de_grado     
+Yayofón |Simple        |mujeres_mas_65           
+Huver   |Compuesto     |tramo & total_entre_35_50
+
+Lo primero será filtrar el dataset para generar un dataset acorde a las necesidades. Sobre éste, habrá que crear los nuevo indicadores y hacer el ránking.
+
+#### Ránking: Creación de datasets por campaña
+
+Tomando como ejemplo la campaña Ni Hao, sólo nos interesa conseguir la gente nacida en china, el total de población y el total de viviendas por sección censal. No hay filtros, sólo selección de columnas.
+
+```{r}
+nihao<- dataset %>%
+          select(id, municipio, distrito, seccion, total_poblacion, total_china, viviendas)
+```
+
+El resto de datasets se construyen igual:
+```{r}
+# Dataset para la campaña de Joquers
+joquers<- dataset %>%
+            select(id, municipio, distrito, seccion, total_poblacion,estudiantes_de_grado, viviendas)
+
+# Dataset para la camapaña de Yayofón
+yayofon <- dataset %>%
+            select(id, municipio, distrito, seccion, total_poblacion,mujeres_mas_65, viviendas)
+```
+
+Para el caso de la camapaña de HUVER, habría que considerar 2 indicadores, la edad comprendida entre 35 y 50 años y que su nivel de estudios sea de 3º grado (diplomatura, licenciatura o máster). Además, está el tema del nivel de renta, pero en vez de tomarlo como indicador, se filtrará el número de observaciones por tramos > a 7.
+
+```{r}
+huver<- dataset %>%
+          select(id, municipio, distrito, seccion, total_poblacion,total_entre_35_50)     
+
+```
 
 # Anexo: 
 ## Creación del dataset: Solución
@@ -482,7 +546,7 @@ dataset<- dataset %>%
          total_entre_35_50=tot_pers_35_50,
          mujeres_mas_65=tot_pers_plus65,
          estudiantes_de_grado=total_estudiantes_grado) %>% 
-  select(id,municipio,distrito,seccion,tramo,desc_tramo,viviendas,total_poblacion,total_entre_35_50,mujeres_mas_65,total_china,estudiantes_de_grado)
+  select(id,municipio,distrito,seccion,tramo,desc_tramo,viviendas,total_poblacion,tercer_grado,total_entre_35_50,mujeres_mas_65,total_china,estudiantes_de_grado)
 ``` 
 
 El problema ahora es que no todos los dataset de origen tenían el mismo número de sectores censales, por lo que aquellos que tuvieran menos, encontrarán `NA`s asignados a los indicadores para las cuales no tenian sector censal.
