@@ -48,7 +48,7 @@ dataset<- read.csv("./dat/ufos.csv",header=TRUE,stringsAsFactors = FALSE)
 ```
 
 Viendo la estructura, se pueden plantear algunos cambios de tipo de dato, por ejemplo, para las fechas:
-```{r eval=FALSE}
+```{r}
 dataset$datetime<-mdy_hm(dataset$datetime)
 dataset$date.posted<-mdy(dataset$date.posted)
 ```
