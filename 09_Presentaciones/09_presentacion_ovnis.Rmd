@@ -1,0 +1,188 @@
+---
+title: "09_ovnis_Presentacion"
+author: "Aitor Garcia Manterola"
+date: "02 de junio de 2018"
+output: 
+  revealjs::revealjs_presentation:
+    theme: night
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# install.packages("revealjs")
+library(revealjs)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+```
+
+## Reto exploración avistamientos de OVNIs
+
+Vamos a explorar un conjunto de datos sobre avistamientos de OVNIs, disponible en este repositorio en `retos/dat/ufos.csv`. Cópialo a una carpeta `dat/` dentro de la carpeta con la solución a este reto.
+El resultado debes presentarlo en un notebook de jupyter o Rmarkdown.
+Explora los datos contestando a las siguientes preguntas:
+
+
+- <small> ¿Qué países aparecen en el dataset? ¿Cuál tiene mayor número de avistamientos? </small>
+
+- <small> ¿Cuáles son las 10 formas de OVNI avistadas más frecuentes (y cuál es esa frecuencia)? Con forma me refiero a: luz, óvalo, triángulo, ... </small>
+
+- <small> ¿Cómo se distribuye la duraciÃ³n de los avistamientos? En formato texto puedes sacar valores como mínimo, máximo, cuartiles, ... y en formato gráfico pintar un histograma </small>
+
+- <small> ¿Cómo se distribuye el tiempo pasado entre el momento del avistamiento (datetime) y la fecha de publicación (date_posted)? (Ídem sobre cómo expresar la distribución entre formato texto y gráfico) </small>
+
+- <small> ¿Se observa un crecimiento o decrecimiento de los avistamientos a lo largo del tiempo? </small>
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+download.file("https://raw.githubusercontent.com/koldLight/bluetab-data-science-2017/master/retos/dat/ufos.csv", "./dat/ufos.csv", method="libcurl")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+dataset<- read.csv("./dat/ufos.csv",header=TRUE,stringsAsFactors = FALSE)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+dataset$datetime<-mdy_hm(dataset$datetime)
+dataset$date.posted<-mdy(dataset$date.posted)
+```
+
+# ¿Qué países aparecen en el dataset? ¿Cuál tiene mayor número de avistamientos?
+
+----
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+ ggplot(dataset, aes(x=country)) +
+  geom_histogram(stat="count",fill="red") +
+  geom_text(stat='count', aes(label=..count..), vjust=-0.2)
+```
+
+# ¿Cuáles son las 10 formas (luz, óvalo, triángulo, ...) de OVNI avistadas más frecuentes (y cuál es esa frecuencia)?
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# Como hay más de 10 opciones en el dataset, se puede preparar un dataset más 
+# adaptado para responder a esta pregunta.
+formas <- as.data.frame(table(dataset$shape)) %>% arrange(desc(Freq)) %>% head(10)
+names(formas)<- c("Forma","Apariciones")
+formas$label <- as.character(formas$Apariciones)
+```
+
+----
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# Respuesta en gráfico de barras:
+ggplot(formas, aes(x=Forma, y=Apariciones))+
+  geom_bar(stat="identity", fill="blue")+
+  geom_text(aes(label=Apariciones),vjust=-0.2)
+```
+
+----
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# Pero quizás se puede hacer algo diferente. 
+# No es lo más recomendable, pero para representar la variable de formas con su frecuencia de
+# apariciones, se puede usar el típico gráfico de tarta.
+# Primer intento usando piechart:
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+ggplot(formas) +
+  geom_bar(aes(x="",y=Apariciones, fill=Forma),stat="identity",width = 1) +
+  coord_polar(theta="y",start=0) +
+  theme_void() +
+  geom_text(aes(x=1, y = cumsum(Apariciones)-Apariciones/2, label=label))
+```
+
+----
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# Si bien la gráfica por sí sola sí que respondería a la pregunta de qué forma es la más avistada, 
+# las etiquetas de la frecuencia de apariciones no corresponden con los tamaños "de los pedazos" 
+# que ocupan cada forma en la gráfica.
+# Segundo intento usando piechart:
+library(plotly)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+plot_ly(formas, labels = ~Forma, values = ~Apariciones, type = 'pie',textposition = 'outside',textinfo = 'label+value') %>%
+  layout(title = 'Top 10 Formas de ovnis más avistadas',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+```
+
+# ¿Cómo se distribuye la duración de los avistamientos?
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# En una fase inicial, quería agrupar los datos por duracion de segundos y 
+# después agregarlos con una función de conteo.
+# El problema es que mutate no sirve para agregar y count tampoco es la mejor eleccion
+# Código de limpieza probado que no sirve para este dataset pero que podría ayudarme en el futuro:
+# --Descubrir los valores malos
+# which(is.na(segundos))
+# dataset[c(27823,35693,58592),"duration..seconds."]
+# segundos <- gsub('`','',dataset$duration..seconds.)
+
+# Prepración de dataset de duración de segundos:
+segundos<-dataset %>%
+  group_by(duration..seconds.)%>%
+  summarize(conteo=n())%>%
+  mutate(duracion_segundos=duration..seconds.)%>%
+  select(duracion_segundos,conteo)
+```
+
+----
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(segundos, aes(x=duracion_segundos, y=conteo)) +
+   geom_bar(stat="identity", fill="green")
+```
+
+# Cómo se distribuye el tiempo pasado entre el momento del avistamiento (datetime) y la fecha de publicación (date_posted)?
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# La gracia de preparar este datset es jugar con las fechas. 
+# Pero previamente ya se han convertido a un tipo de dato utilizable para cálculos. 
+# Con las fechas, se calcula el tiempo de diferencia entre ellas y se muestra un histograma:
+# Generacion del dataset
+
+t_publicacion<-dataset %>%
+  mutate(tiempo_publi=as.numeric(difftime(as.POSIXct(datetime),as.POSIXct(date.posted),units="secs")),
+        fecha_visto=datetime,
+        fecha_publicacion=date.posted) %>%
+  select(fecha_visto,fecha_publicacion,tiempo_publi)
+```
+
+----
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Dibujo de gráfico:
+ggplot(data=t_publicacion, aes(tiempo_publi)) + 
+  geom_histogram()
+```
+
+#¿Se observa un crecimiento o decrecimiento de los avistamientos a lo largo del tiempo?
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+# Para responder a esta pregunta, habrá que recortar la fecha del avistamiento a nivel de día, mes o
+# año, según interese. Una vez contando con el nivel de detalle deseado, se puede agrupar y realizar
+# el conteo de los avistamientos para esa fecha:
+fechas<-dataset %>%
+          select(datetime) %>%
+          mutate(anyo=format(datetime,format="%Y"),
+                anyo_mes=format(datetime,format="%Y/%m"),
+                anyo_mes_dia=format(datetime,format="%Y/%m/%d"))
+# Para esta ocasion, se trabajará con el año, pero podría utilizarse cualquiera de los campos
+# calculados.
+anyos<-fechas%>%group_by(anyo)%>%summarize(conteo=n())
+
+```
+
+----
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data=anyos, aes(x=anyo, y=conteo, group=1)) +
+    geom_line(color="blue")+geom_area(fill="blue")+
+    theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+# Fin de la presentación
