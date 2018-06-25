@@ -1,0 +1,191 @@
+---
+title: "10_airbnb"
+author: "Aitor Garcia Manterola"
+date: "2 de junio de 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Reto inside AirBnB
+
+El objetivo de este reto es proporcionar un análisis gráfico que identifique el uso que se hace de la plataforma Airbnb en Madrid o Barcelona. Es decir, que vayas explorando los datos y saques conclusiones apoyadas con gráficos en un notebook (Rmarkdown o notebook de jupyter).
+
+Airbnb sostiene que su propósito es promover la economía de compartir. Es decir, que yo alquile mi casa mientras estoy de vacaciones en otro apartamento también ofrecido por una persona como yo, en el lugar que quiera visitar. Por el contrario, los negocios hoteleros se quejan de que realmente gran cantidad de los anfitriones en Airbnb hacen negocio con la plataforma, creando economía sumergida e incumpliendo medidas de seguridad, como la de exigir la identidad de los clientes.
+
+Escoge Madrid o Barcelona (lo que prefieras) para hacer tu análisis. Los datos los puedes extraer de [Inside Airbnb](http://insideairbnb.com/get-the-data.html), que proporciona datasets *no oficiales* sobre Airbnb en distintas ciudades. Los datos los obtienen mediante scraping de información pública en Airbnb.
+
+## Organización del proyecto
+
+Crea una carpeta en tu repositorio que se llame `10_airbnb` y crea tu notebook dentro. Descárgate los datos que necesites de [Inside Airbnb](http://insideairbnb.com/get-the-data.html) y guárdarlos en una carpeta `dat/`. Es probable que no necesites todos (el imprescindible es el de `listings`, pero hay datos sobre el calendario, un geojson de los barrios, ...), dependerá del análisis que quieras hacer.
+
+## Los datos
+
+Aunque los datos vienen bastante limpios, tendrás que hacer lo habitual, como conversión de tipos. Es recomendable que elimines los alojamientos que nunca se han alquilado, para no ensuciar el análisis (puedes suponer que si no tienen ninguna review, no se han alquilado aún).
+
+## Sugerencias de gráficos
+
+Este análisis es libre, puedes explorar y mostrar lo que prefieras. Lo que pongo aquí son solo sugerencias:
+
+Como análisis básico:
+
+* Muestra la cantidad de alojamientos por tipo (completo, habitación privada, habitación compartida)
+* Muestra en un mapa los barrios coloreados por cantidad de alojamientos ofertados (p.e. gris las zonas con menos alojamientos, rojo intenso las que más)
+* Muestra en un gráfico de [barras agrupadas](https://peltiertech.com/images/2011-07/CS_Col_00.png) los alojamientos por barrio y tipo.
+
+Para analizar el uso de airbnb para hacer negocio:
+
+* Crea una clasificación propia para intentar determinar el uso de cada alojamiento. Un criterio de clasificación de ejemplo:
+  + Si el anfitrión solo tiene un alojamiento y lo tiene disponible menos de 90 días al año, podemos suponer que es alguien que lo alquila mientras está fuera durante sus vacaciones. Podemos clasificarlo como un alojamiento "vacacional".
+  + Si el anfitrión solo tiene un alojamiento y es de tipo habitación privada, suponemos que son personas que alquilar una habitación de su propia casa mientras están ellos allí. Lo clasificamos como "habitación propia".
+  + Si el anfitrión tiene varios alojamientos de tipo completo disponibles durante más de 90 días al año, suponemos que hacen negocio con la plataforma, alquilando de manera continua varios alojamientos. Lo clasificamos como "negocio".
+  + Otros usos que no caigan en estos casos, pueden ser "otros". Si hay muchos de este tipo, conviene crear una división extra con el caso más mayoritario (p.e. anfitriones con un único alojamiento pero alquilado más de 90 días al año puede ser "segunda vivienda").
+* Muestra la distribución de alojamientos por esta clasificación. Puedes introducir alguna variable más al gráfico que pueda ser interesante, como el barrio.
+* Aproxima la ocupación mensual y lo que ingresa cada alojamiento con alguna heurística. Inside Airbnb comenta que:
+  + El 50% de usuarios dejan una review tras el alquiler
+  + La duración media del alquiler es de 3 noches, a no ser que el número mínimo de noches requerido sea superior
+  + Los alojamientos suelen estar ocupados como máximo un 70% de los días que están disponibles
+* Muestra la distribución de los ingresos mensuales en base a la clasificación que hemos hecho (negocio, vacacional, ...). Puede que tengas que jugar con diferentes escalas.
+* Representa los barrios que están ingresando más dinero.
+* Agrupa los alojamientos por ID de anfitrión, suma cuánto ingresa cada uno mensualmente por sus alojamientos, y represéntalo. Si observas una situación de desigualdad (unos pocos ingresan mucho), intenta resumirlo en una expresión del tipo el 10% de los anfitriones ingresan el 80% del total en la plataforma coherente con tus datos.
+
+# Reto inside AirBnB: La solución planteada
+
+## Obtención de los datos
+Lo primero será realizar la descarga de los diferentes datasets que interesen para la realización del análisis:
+
+```{r message=FALSE, warning=FALSE}
+# Carga de librerías
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(geojsonio)
+library(grDevices)
+# Descarga de Listings
+#download.file("http://data.insideairbnb.com/spain/comunidad-de-madrid/madrid/2018-01-17/visualisations/listings.csv", "./dat/listings.csv", method="libcurl")
+#download.file("http://data.insideairbnb.com/spain/comunidad-de-madrid/madrid/2018-01-17/visualisations/neighbourhoods.csv", "./dat/neighbourhoods.csv", method="libcurl")
+#download.file("http://data.insideairbnb.com/spain/comunidad-de-madrid/madrid/2018-01-17/visualisations/neighbourhoods.geojson", "./dat/neighbourhoods.geojson", method="libcurl")
+```
+
+Con los datos descargados, habrá que montar los dataset iniciales sobre los que luego se realizará el post-procesado:
+
+```{r}
+listings <- read.csv("dat/listings.csv", stringsAsFactors = FALSE)
+geobarrios <- geojsonio::geojson_read("dat/neighbourhoods.geojson",
+  what = "sp")
+```
+
+
+## Preparación de los dataset
+
+```{r eval=FALSE}
+summary(listings)
+head(listings)
+nrow(listings)
+sapply(listings,class)
+```
+
+Una asunción que se recomienda realizar es la de no considerar aquellos apartamentos que no tengan evaluaciones o reviews, considerando así que nunca se han alquilado y por tanto, no acaparan interés alguno para su análisis:
+```{r message=FALSE, warning=FALSE, include=FALSE}
+listings <- listings %>%
+  filter(number_of_reviews > 0)
+```
+
+## Análisis Básico
+
+* Mostrar cantidad de alojamientos por tipo:
+```{r}
+ggplot(listings, aes(x=room_type)) +
+ geom_bar(fill="green") +
+ geom_text(stat='count', aes(label=..count..), vjust=-0.2) +
+ xlab("Tipo de alojamiento") + ylab("Cantidad de alojamientos ofertados")
+```
+
+* Muestra en un mapa los barrios coloreados por cantidad de alojamientos ofertados (p.e. gris las zonas con menos alojamientos, rojo intenso las que más)
+```{r}
+# Preparamos el listado de barrios con el número de alojamientos
+barrios <- listings %>%
+              group_by(neighbourhood) %>%
+              summarize(count = n()) %>%
+              arrange(desc(count))
+
+# Para pintar un mapa coloreado con alguna propiedad, hay que agregar la información cuantitativa, de colores, etc. a la propia variable
+# que tiene la información de los geojson.
+# En concreto, al campo @data del mapa.
+
+# Para incluir la información de barrios, habrá que cruzar por el tipo de dato que no sea factor.
+# En barrios está bien, falta modificarlo en geobarrios:
+geobarrios@data$neighbourhood <- as.character(geobarrios@data$neighbourhood)
+
+# Usamos left_join en lugar de merge porque respeta el orden del primer dataframe.
+# De esta forma tendremos añadidos los datos de ocupación por barrios a los datos de geobarrios.
+geobarrios@data <- left_join(geobarrios@data, barrios, by = "neighbourhood")
+
+# Claro que si con el cruce obtendremos otra vez todos los barrios, por lo que será necesario quitar aquellos
+# que se habían limpiado por falta de ocupación la inicio:
+geobarrios@data[is.na(geobarrios@data$count), ]$count <- 0
+
+# Falta completar el mapa con los colores por ocupación:
+# Para la construcción de la paleta leaflet tiene una serie de herramientas. ColorBin vendrá bien puesto que hay
+# muchos valores disitntos de ocupación.
+
+# Para decidir los rangos de cifras que determinen los colores, se puede hacer una exploración rápida con un histograma:
+hist(geobarrios@data$count, breaks = 100)
+
+# De un vistazo se puede decidir los bloques de colores a incluir.
+# La mayoría se concentran en los 300-400 primeros casos, y luego hay valores sueltos
+# entre 500 y 1000 y apenas aparecen casos a posteriori.
+# Definiremos un mayor detalle al principio y espaciaremos mas los límites a medida
+# que el conteo aumente.
+bins <- c(0, 50, 100, 200, 400, 800,1200, 2000, 2500)
+
+# La paleta se configura como una función, asociándole el conteo y los límites de las
+# cajas o bins, para gamificarlo.
+# La escala se puede escoger en ColorBrewer. Por ejemplo: 'YlGnBu'
+pal  <- colorBin("YlGnBu", domain = geobarrios@data$count, bins = bins)
+# Para darle cierta interactividad, se puede hacer una etiqueta que aparezca
+# por el barrio al pasar el ratón por encima. Se tiene que formatear con HTML
+# y para que lo coja bien hay que usar htmltools::HTML
+# install.packages("htmltools")
+labels <- paste0("<strong>", geobarrios@data$neighbourhood,
+                 " (", geobarrios@data$neighbourhood_group, ")",
+                 "</strong><br/>", geobarrios@data$count, " alojamientos") %>%
+  lapply(htmltools::HTML)
+
+# Ahora ya sí, con los preparativos, se monta el mapa:
+leaflet(geobarrios) %>%
+  addProviderTiles(providers$HERE.hybridDay) %>%
+  addPolygons(
+    # control del relleno:
+    fillColor = ~pal(count),
+    fillOpacity = 0.3,
+    # control de la línea
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "4",
+    highlight = highlightOptions(
+      weight = 5,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE),
+    label = labels
+  ) %>%
+  addLegend(pal = pal, values = ~count, title = "# de apartamentos",
+            position = "bottomleft")
+
+```
+
+* Muestra en un gráfico de [barras agrupadas](https://peltiertech.com/images/2011-07/CS_Col_00.png) los alojamientos por barrio y tipo.
+
+```{r}
+ggplot(listings, aes(x=neighbourhood_group)) +
+  geom_bar(aes(fill = room_type),position = position_dodge()) +
+  coord_flip() +
+  theme(legend.position = "top") +
+  guides(fill=guide_legend(title="Tipo Alojamiento")) +
+  xlab("Nº de alojamientos") + ylab("Barrio")
+```
