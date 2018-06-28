@@ -156,15 +156,15 @@ labels <- paste0("<strong>", geobarrios@data$neighbourhood,
 
 # Ahora ya sí, con los preparativos, se monta el mapa:
 leaflet(geobarrios) %>%
-  addProviderTiles(providers$HERE.hybridDay) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
   addPolygons(
     # control del relleno:
     fillColor = ~pal(count),
-    fillOpacity = 0.3,
+    fillOpacity = 0.5,
     # control de la línea
     weight = 2,
     opacity = 1,
-    color = "white",
+    color = "red",
     dashArray = "4",
     highlight = highlightOptions(
       weight = 5,
